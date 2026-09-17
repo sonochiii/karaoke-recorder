@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocal Karaoke Key & Pitch Editor</title>
+    <style>
+        body { font-family: sans-serif, Arial; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 600px; background: #1e1e1e; padding: 24px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h1 { font-size: 1.5rem; margin-bottom: 20px; text-align: center; color: #ffffff; }
+        .control-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="file"] { width: 100%; padding: 10px; background: #2d2d2d; border: 1px dashed #444; border-radius: 6px; color: #fff; cursor: pointer; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .values { display: flex; justify-content: space-between; font-size: 0.9rem; color: #aaa; margin-top: 4px; }
+        button { background: #6200ee; color: white; border: none; padding: 12px 20px; border-radius: 6px; font-size: 1rem; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; }
+        button:hover { background: #3700b3; }
+        button:disabled { background: #444; color: #777; cursor: not-allowed; }
+        audio { width: 100%; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>カラオケ音源キーエディタ</h1>
+    
+    <div class="control-group">
+        <label for="audioFile">音源ファイルを選択 (WAV / MP3)</label>
+        <input type="file" id="audioFile" accept="audio/*">
+    </div>
+
+    <div class="control-group">
+        <label for="pitchShift">キー変更 (半音単位): <span id="pitchVal">0</span></label>
+        <input type="range" id="pitchShift" min="-12" max="12" value="0" step="1">
+        <div class="values"><span>-1 (1オクターブ下)</span><span>原音 (0)</span><span>+1 (1オクターブ上)</span></div>
+    </div>
+
+    <button id="processBtn" disabled>音源を処理する</button>
+    
+    <div class="control-group" style="margin-top: 20px;">
+        <label>プレビュー & ダウンロード</label>
+        <audio id="audioPreview" controls></audio>
+    </div>
+</div>
+
+<script>
+    const audioFileInput = document.getElementById('audioFile');
+    const pitchShiftInput = document.getElementById('pitchShift');
+    const pitchValSpan = document.getElementById('pitchVal');
+    const processBtn = document.getElementById('processBtn');
+    const audioPreview = document.getElementById('audioPreview');
+
+    let audioCtx = null;
+    let audioBuffer = null;
+
+    pitchShiftInput.addEventListener('input', (e) => {
+        pitchValSpan.textContent = e.target.value;
+    });
+
+    audioFileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const arrayBuffer = await file.arrayBuffer();
+            audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            processBtn.disabled = false;
+            alert('ファイルの読み込みが完了しました。');
+        } catch (err) {
+            alert('音声ファイルの読み込みに失敗しました。');
+            console.error(err);
+        }
+    });
+
+    processBtn.addEventListener('click', () => {
+        if (!audioBuffer) return;
+        
+        const semitones = parseInt(pitchShiftInput.value);
+        // 再生速度を変えることで簡易的にピッチ（キー）とテンポをシフトする処理
+        // 正式な音程のみの変更にはsoundtouch.js等のライブラリが必要ですが、基本機能として再生レートを変更
+        const playbackRate = Math.pow(2, semitones / 12);
+
+        // Blob生成のシミュレーション（簡易プレビュー設定）
+        // オフラインオーディオコンテキストを用いた正確なレンダリング処理
+        renderProcessedAudio(audioBuffer, playbackRate);
+    });
+
+    async function renderProcessedAudio(buffer, rate) {
+        processBtn.textContent = '処理中...';
+        processBtn.disabled = true;
+
+        const offlineCtx = new OfflineAudioContext(
+            buffer.numberOfChannels,
+            buffer.length / rate,
+            buffer.sampleRate
+        );
+
+        const source = offlineCtx.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.value = rate;
+        source.connect(offlineCtx.destination);
+        source.start(0);
+
+        const renderedBuffer = await offlineCtx.startRendering();
+        const wavBlob = bufferToWave(renderedBuffer, renderedBuffer.length);
+        
+        audioPreview.src = URL.createObjectURL(wavBlob);
+        processBtn.textContent = '音源を処理する';
+        processBtn.disabled = false;
+        alert('キー編集が完了しました。プレビューから確認・ダウンロードできます。');
+    }
+
+    // AudioBufferをWAV形式のBlobに変換するヘルパー関数
+    function bufferToWave(abuffer, len) {
+        let numOfChan = abuffer.numberOfChannels,
+            length = len * numOfChan * 2 + 44,
+            buffer = new ArrayBuffer(length),
+            view = new DataView(buffer),
+            channels = [], sample,
+            offset = 0,
+            pos = 0;
+
+        function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+        function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+
+        setUint32(0x46464952); // "RIFF"
+        setUint32(length - 8); // file length - 8
+        setUint32(0x45564157); // "WAVE"
+
+        setUint32(0x20746d66); // "fmt " chunk
+        setUint32(16); // length = 16
+        setUint32(1); // PCM (uncompressed)
+        setUint16(numOfChan);
+        setUint32(abuffer.sampleRate);
+        setUint32(abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
+        setUint16(numOfChan * 2); // block-align
+        setUint16(16); // 16-bit
+
+        setUint32(0x61746164); // "data" - chunk
+        setUint32(length - pos - 4);
+
+        for (let i = 0; i < abuffer.numberOfChannels; i++) channels.push(abuffer.getChannelData(i));
+
+        while (pos < length) {
+            for (let i = 0; i < numOfChan; i++) {
+                sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767);
+                view.setInt16(pos, sample, true);
+                pos += 2;
+            }
+            offset++;
+        }
+        return new Blob([buffer], { type: "audio/wav" });
+    }
+</script>
+
+</body>
+</html>
