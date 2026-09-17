@@ -4,11 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GarageBand Style Karaoke & Voice Recorder</title>
-    <!-- アプリケーションのスタイル定義 -->
     <style>
         body { font-family: sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 650px; background: #1e1e1e; padding: 24px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
         h1 { font-size: 1.4rem; margin-bottom: 20px; text-align: center; color: #fff; }
+        
+        /* タブ切り替えボタンのスタイル */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { flex: 1; padding: 10px; background: #2d2d2d; border: none; color: #aaa; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        .tab-btn.active { background: #6200ee; color: white; }
+
+        /* ビュー（画面）の切り替え用クラス */
+        .view { display: none; }
+        .view.active { display: block; }
+
         .section { margin-bottom: 20px; background: #252525; padding: 15px; border-radius: 8px; }
         label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 0.9rem; }
         input[type="file"], input[type="range"] { width: 100%; margin-bottom: 10px; }
@@ -16,38 +25,69 @@
         button:hover { background: #3700b3; }
         button:disabled { background: #444; color: #777; cursor: not-allowed; }
         audio { width: 100%; margin-top: 10px; }
+        .status-text { color: #03dac6; font-size: 0.9rem; margin-top: 5px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>歌ってみた・レコーダー（GarageBand風）</h1>
+    <h1>GarageBand風 歌ってみたレコーダー</h1>
     
-    <!-- 1. カラオケ音源読み込みとキー変更セクション -->
-    <div class="section">
-        <label for="audioFile">1. カラオケ音源ファイル (WAV/MP3)</label>
-        <input type="file" id="audioFile" accept="audio/*">
-        
-        <label for="pitchShift">キー変更 (半音単位): <span id="pitchVal">0</span></label>
-        <input type="range" id="pitchShift" min="-12" max="12" value="0" step="1">
+    <!-- タブ切り替えボタン -->
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('record')">1. 録音・オケ設定</button>
+        <button class="tab-btn" onclick="switchTab('edit')">2. 編集・ミックス</button>
     </div>
 
-    <!-- 2. 録音セクション -->
-    <div class="section">
-        <label>2. マイク録音（オケを聴きながら歌う）</label>
-        <button id="recordBtn" disabled>オケに合わせて歌声を録音開始</button>
-        <button id="stopRecordBtn" disabled>録音停止</button>
+    <!-- View 1: 録音画面 -->
+    <div id="recordView" class="view active">
+        <div class="section">
+            <label for="audioFile">カラオケ音源ファイル (WAV/MP3)</label>
+            <input type="file" id="audioFile" accept="audio/*">
+            <div id="fileStatus" class="status-text">音源ファイルが未選択です</div>
+            
+            <label for="pitchShift" style="margin-top: 15px;">キー変更 (半音単位): <span id="pitchVal">0</span></label>
+            <input type="range" id="pitchShift" min="-12" max="12" value="0" step="1">
+        </div>
+
+        <div class="section">
+            <label>マイク同時レコーディング</label>
+            <button id="recordBtn" disabled>オケを聴きながら歌声を録音開始</button>
+            <button id="stopRecordBtn" disabled>録音停止</button>
+            <div id="recStatus" class="status-text">待機中</div>
+        </div>
     </div>
 
-    <!-- 3. ミックス＆ダウンロードセクション -->
-    <div class="section">
-        <label>3. ミックス＆プレビュー</label>
-        <button id="mixBtn" disabled>音源と歌声をミックスする</button>
-        <audio id="audioPreview" controls></audio>
+    <!-- View 2: 編集画面 -->
+    <div id="editView" class="view">
+        <div class="section">
+            <label>トラック・ミキシング</label>
+            <div id="editStatus" class="status-text">未録音のデータがあります。録音を完了させてください。</div>
+            <button id="mixBtn" disabled>音源と歌声をミックスして書き出し</button>
+        </div>
+
+        <div class="section">
+            <label>ミックス音声プレビュー</label>
+            <audio id="audioPreview" controls></audio>
+        </div>
     </div>
 </div>
 
 <script>
+    // タブ切り替え関数
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+
+        if (tabName === 'record') {
+            document.querySelectorAll('.tab-btn')[0].classList.add('active');
+            document.getElementById('recordView').classList.add('active');
+        } else if (tabName === 'edit') {
+            document.querySelectorAll('.tab-btn'][1].classList.add('active');
+            document.getElementById('editView').classList.add('active');
+        }
+    }
+
     // DOM要素の取得
     const audioFileInput = document.getElementById('audioFile');
     const pitchShiftInput = document.getElementById('pitchShift');
@@ -56,6 +96,9 @@
     const stopRecordBtn = document.getElementById('stopRecordBtn');
     const mixBtn = document.getElementById('mixBtn');
     const audioPreview = document.getElementById('audioPreview');
+    const fileStatus = document.getElementById('fileStatus');
+    const recStatus = document.getElementById('recStatus');
+    const editStatus = document.getElementById('editStatus');
 
     let audioCtx = null;
     let audioBuffer = null;
@@ -65,35 +108,32 @@
     let recordedAudioBlob = null;
     let processedKaraokeBuffer = null;
 
-    // キー変更スライダーの値更新
     pitchShiftInput.addEventListener('input', (e) => {
         pitchValSpan.textContent = e.target.value;
     });
 
-    // 音声ファイルの読み込み処理
     audioFileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
         try {
+            fileStatus.textContent = '読み込み中...';
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const arrayBuffer = await file.arrayBuffer();
             audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
             recordBtn.disabled = false;
-            alert('カラオケ音源の読み込みが完了しました。');
+            fileStatus.textContent = `読込完了: ${file.name}`;
         } catch (err) {
-            alert('音声ファイルの読み込みに失敗しました。');
+            fileStatus.textContent = '音声ファイルの読み込みに失敗しました。';
             console.error(err);
         }
     });
 
-    // 録音開始（オケ再生とマイク入力を同時に実行）
     recordBtn.addEventListener('click', async () => {
         if (!audioBuffer) return;
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
         try {
-            // マイクストリームの取得
             micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(micStream);
             recordedChunks = [];
@@ -102,13 +142,16 @@
                 if (event.data.size > 0) recordedChunks.push(event.data);
             };
 
-            mediaRecorder.onstop = () => {
+            mediaRecorder.onstop = async () => {
                 recordedAudioBlob = new Blob(recordedChunks, { type: 'audio/webm' });
                 mixBtn.disabled = false;
-                alert('録音が完了しました。「ミックスする」ボタンを押してください。');
+                editStatus.textContent = '録音データの準備ができました。「ミックスして書き出し」を実行してください。';
+                recStatus.textContent = '録音完了！編集タブに移動できます。';
+                
+                // 録音終了時に自動で編集画面へ切り替え
+                switchTab('edit');
             };
 
-            // キー変更を適用したカラオケ音源のレンダリング
             const semitones = parseInt(pitchShiftInput.value);
             const playbackRate = Math.pow(2, semitones / 12);
 
@@ -124,18 +167,16 @@
             source.start(0);
             processedKaraokeBuffer = await offlineCtx.startRendering();
 
-            // 調整済みオケのスピーカー再生用設定
             const karaokeSource = audioCtx.createBufferSource();
             karaokeSource.buffer = processedKaraokeBuffer;
             karaokeSource.connect(audioCtx.destination);
 
-            // 録音とオケ再生を同時にスタート
             mediaRecorder.start();
             karaokeSource.start(0);
 
             recordBtn.disabled = true;
             stopRecordBtn.disabled = false;
-            recordBtn.textContent = '録音中...';
+            recStatus.textContent = '🔴 録音中（オケ再生中）...';
 
         } catch (err) {
             alert('マイクへのアクセスが拒否されました。');
@@ -143,7 +184,6 @@
         }
     });
 
-    // 録音停止処理
     stopRecordBtn.addEventListener('click', () => {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
@@ -153,10 +193,8 @@
         }
         recordBtn.disabled = false;
         stopRecordBtn.disabled = true;
-        recordBtn.textContent = 'オケに合わせて歌声を録音開始';
     });
 
-    // カラオケ音源と歌声のミキシング処理
     mixBtn.addEventListener('click', async () => {
         if (!processedKaraokeBuffer || !recordedAudioBlob) return;
 
@@ -172,36 +210,32 @@
 
             const offlineCtx = new OfflineAudioContext(numberOfChannels, length, audioCtx.sampleRate);
 
-            // オケトラックの配置
             const karaokeNode = offlineCtx.createBufferSource();
             karaokeNode.buffer = processedKaraokeBuffer;
             karaokeNode.connect(offlineCtx.destination);
             karaokeNode.start(0);
 
-            // マイク（歌声）トラックの配置
             const micNode = offlineCtx.createBufferSource();
             micNode.buffer = micAudioBuffer;
             micNode.connect(offlineCtx.destination);
             micNode.start(0);
 
-            // ミックスレンダリングの実行
             const mixedBuffer = await offlineCtx.startRendering();
             const wavBlob = bufferToWave(mixedBuffer, mixedBuffer.length);
 
             audioPreview.src = URL.createObjectURL(wavBlob);
-            mixBtn.textContent = 'ミックス完了';
+            mixBtn.textContent = 'ミックスして書き出し';
             mixBtn.disabled = false;
-            alert('ミックスが完了しました。プレビューから確認・ダウンロードできます！');
+            editStatus.textContent = '✨ ミックスが完了しました！下部のプレイヤーから再生・ダウンロードできます。';
 
         } catch (err) {
             alert('ミックス処理中にエラーが発生しました。');
             console.error(err);
-            mixBtn.textContent = '音源と歌声をミックスする';
+            mixBtn.textContent = 'ミックスして書き出し';
             mixBtn.disabled = false;
         }
     });
 
-    // AudioBufferをWAV形式のBlobに変換するヘルパー関数
     function bufferToWave(abuffer, len) {
         let numOfChan = abuffer.numberOfChannels,
             length = len * numOfChan * 2 + 44,
